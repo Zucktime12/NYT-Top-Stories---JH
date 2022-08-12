@@ -80,3 +80,173 @@ function run_jh_nyt_top_stories() {
 
 }
 run_jh_nyt_top_stories();
+
+
+class NytTopStories {
+	public function __construct()
+	{
+		add_action ('init', array($this, 'register_stories_cpt'));
+		add_action('admin_menu', array($this, 'stories_add_menu_page'));
+		
+	}
+
+	public function register_stories_cpt() {
+
+		$args = array(
+			'public' => true,
+			'capability_type' => 'post',
+			'exclude_from_search' => true,
+			// 'publicly_queryable' => false,
+			'labels' => array(
+				'name' => 'Top Stories',
+				'singular_name' => 'Top Story'
+			),
+			'taxonomies' => array('post_tag', 'category'),
+			'menu_icon' => 'dashicons-media-text',
+		);
+
+		register_post_type('story', $args);
+	}
+
+	public function stories_add_menu_page() {
+		add_menu_page(
+			'NY Top Stories',
+			'NY Top Stories',
+			'manage_options',
+			'jh-nyt-top-stories',
+			// 'get_stories',
+			'ping_api',
+			'dashicons-book',
+			16,
+		);
+
+		// function get_stories() {
+		// 	echo "hello";
+		// }
+
+		function ping_api() {
+			if(false === get_option('jh_nyt_top_stories')) {
+
+				$top_stories = get_top_stories_from_api();
+
+				add_option( 'jh_nyt_top_stories', $top_stories);
+
+				// echo '<pre>';
+				// var_dump( $results );
+				// echo '</pre>';
+
+				return;
+			}
+
+			// print_r('the option is missing');
+
+			if ( get_option ('jh_nyt_table_version') ) {
+				create_database_table();
+			}
+			
+			//get info stored in the database
+			save_database_table_info();
+			
+			// print_r('the option is saved');
+		}
+
+		function get_top_stories_from_api() {
+
+			// $results = wp_remote_get('https://api.nytimes.com/svc/topstories/v2/home.json?api-key=yt0gtxAuAfZDItcull3vLJG7qjGPyjnN');
+			$app_id = '95a07ae2-7467-4bf5-89fe-58553a10cbfa';
+			$api_key = 'yt0gtxAuAfZDItcull3vLJG7qjGPyjnN';
+			$secret = 'Vszs8LA7LD0sec78';
+
+			$args = array(
+				'headers' => array(
+					'Content-Type' => 'application/json', 
+				),
+				'body' => array(),
+			);
+			$url = "https://api.nytimes.com/svc/topstories/v2/home.json?api-key=$api_key";
+			
+			$response = wp_remote_get( $url, $args );
+			$response_code = wp_remote_retrieve_response_code( $response );
+			
+			var_dump($response);
+	
+			// echo "hello";
+
+			$body = wp_remote_retrieve_body($response);
+
+			if (401 === $response_code) {
+				return "Unauthorized access";
+			}
+			if (200 !== $response_code) {
+				return "Error Pinging API";
+			}
+			if (200 === $response_code) {
+				return $body;
+			}
+
+		}
+		
+
+		function create_database_table() {
+			global $jh_nyt_table_version;
+			global $wpdb;
+	
+			$jh_nyt_table_version = '1.0.0';
+	
+			$table_name = $wpdb->prefix . 'jh_nyt_table_version';
+	
+			$charset_collate = $wpdb->get_charset_collate();
+	
+			$sql = "CREATE TABLE $table_name (
+				id mediumint(9) NOT NULL AUTO_INCREMENT,
+				time datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+				title text NOT NULL,
+				abstract text NOT NULL,
+				published_date text NOT NULL,
+				urlStory text NOT NULL,
+				byline text NOT NULL,
+				section text NOT NULL,
+				des_facet text NOT NULL,
+				PRIMARY KEY  (id)
+			  ) $charset_collate;";
+	
+			require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+			dbDelta( $sql );
+	
+			add_option( 'jh_nyt_table_version', $jh_nyt_table_version);
+		}
+
+		function save_database_table_info() {
+			
+			global $wpdb;
+
+			$table_name = $wpdb->prefix . 'jh_nyt_table_version';
+			
+			$results = json_decode( get_option( 'jh_nyt_top_stories' ) )->results;
+
+			foreach( $results as $result) {
+				$wpdb->insert( 
+					$table_name, 
+					array( 
+						'time' => current_time( 'mysql' ), 
+						'title' => $result -> title,
+						'abstract' => $result -> abstract,
+						'published_date' => $result -> published_date,
+						'urlStory' => $result -> url,
+						'byline' => $result -> byline,
+						'section' => $result -> section,
+						'des_facet' => $result -> des_facet,
+					) 
+				);
+		
+			}
+
+			echo '<pre>';
+			var_dump( $results );
+			echo '</pre>';
+		
+		}
+	}
+}
+
+new NytTopStories;
